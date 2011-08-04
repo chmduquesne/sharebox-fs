@@ -1,0 +1,27 @@
+#!/bin/sh
+
+. lib/functions
+
+mount_unmount()
+{
+    echo "mounting then demounting"
+    init local
+    mount local
+    debug_interrupt
+    unmount local
+    clean
+}
+
+fuse()
+{
+    echo "running tests from fuse"
+    init local
+    mount local
+    assert_success fuse_tester $PWD/sandbox/local/mnt
+    debug_interrupt
+    unmount local
+    clean
+}
+
+mount_unmount
+fuse
