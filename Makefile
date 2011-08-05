@@ -13,10 +13,11 @@ git-annex.o: git-annex.c git-annex.h
 	gcc -g -Wall $(CFLAGS) -c git-annex.c
 
 test: all
-	make -C tests/
+	$(MAKE) -C tests/
 
 clean:
 	rm -f sharebox *.o
+	$(MAKE) -C tests/ clean
 
 install: all
 	install -Dm755 ./sharebox $(INSTALL_PREFIX)/bin/sharebox
