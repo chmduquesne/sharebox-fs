@@ -23,13 +23,13 @@ fuse_tester()
 
 init()
 {
-    mkdir -p sandbox/$1/mnt sandbox/$1/git
+    mkdir -p sandbox/$1/mnt sandbox/$1/fs
     mkfs sandbox/$1/fs >/dev/null
 }
 
 mount()
 {
-    sharebox sandbox/$1/mnt -o gitdir=sandbox/$1/fs
+    sharebox sandbox/$1/fs sandbox/$1/mnt
 }
 
 unmount()
@@ -72,82 +72,3 @@ assert_fail()
     ($@ 2>&1) >/dev/null && echo "Error: This succeeded: $@"
 }
 
-#-----------------------------------------------------------------------#
-# tests
-#-----------------------------------------------------------------------#
-
-mount_unmount(){
-    echo "mounting then demounting"
-    init local
-    mount local
-    debug_interrupt
-    unmount local
-    clean
-}
-
-
-sync_simple(){
-    echo "simple synchronization"
-    init local
-    init remote
-    mount local
-    mount remote
-    make_peers local remote
-    echo "test_line" >> sandbox/local/mnt/test_file
-    ./sharebox.py -c sync test/remote/mnt
-    # after sync, the file must exist
-    assert_success test -e test/remote/mnt/test_file
-    # but diffing should fail because it is recorded as size 0
-    assert_fail diff test/local/mnt/test_file test/remote/mnt/test_file
-    # diffing should work the second time (opened by the first diff, so it
-    # has been downloaded)
-    assert_success diff test/local/mnt/test_file test/remote/mnt/test_file
-    debug_interrupt
-    unmount local
-    unmount remote
-    clean
-}
-
-sync_normal_conflict(){
-    echo "synchronization with normal conflict"
-    init local
-    init remote
-    mount local
-    mount remote
-    make_peers local remote
-    echo "test_line" >> test/local/mnt/test_file
-    ./sharebox.py -c sync test/remote/mnt
-    assert_success test -e test/remote/mnt/test_file
-    touch test/remote/mnt/test_file
-    echo "test_line_local" >> test/local/mnt/test_file
-    echo "test_line_remote" >> test/remote/mnt/test_file
-    ./sharebox.py -c sync test/remote/mnt
-    # but diffing should fail
-    assert_fail diff test/local/mnt/test_file test/remote/mnt/test_file
-    debug_interrupt
-    unmount local
-    unmount remote
-    clean
-}
-
-sync_delete_conflict(){
-    echo "synchronization with delete conflict"
-    init local
-    init remote
-    mount local
-    mount remote
-    make_peers local remote
-    echo "test_line" >> test/local/mnt/test_file
-    ./sharebox.py -c sync test/remote/mnt
-    assert_success test -e test/remote/mnt/test_file
-    touch test/remote/mnt/test_file
-    echo "test_line_remote" >> test/remote/mnt/test_file
-    rm test/local/mnt/test_file
-    ./sharebox.py -c sync test/remote/mnt
-    # diffing should fail
-    assert_fail diff test/local/mnt/test_file test/remote/mnt/test_file
-    debug_interrupt
-    unmount local
-    unmount remote
-    clean
-}
