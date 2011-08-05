@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+
+# This shell script initializes a directory for use with sharebox
+
+usage()
+{
+    echo "Error: $@"
+    echo "Usage: $0 <empty directory>"
+    exit 2
+}
+
+[[ -n $1 ]] || usage "Missing argument"
+[[ -z $2 ]] || usage "Too many arguments"
+[[ -d $1 ]] || usage "$1: Not a directory"
+[[ -z $(ls -A $1) ]] || usage "$1: Directory is not empty"
+
+mkdir -p -- $1/master/files
+mkdir -- $1/peers
+cd -- $1/master
+git init
+git annex init "$USER@$(hostname):$PWD"
