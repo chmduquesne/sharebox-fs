@@ -2,34 +2,39 @@
 
 . lib/functions
 
-mount_unmount()
-{
-    echo "mounting then demounting"
-    init local
-    mount local
-    debug_interrupt
-    unmount local
-    clean
-}
-
 fuse()
 {
-    echo "running tests from fuse"
-    init local
-    mount local
-    assert_success fuse_tester $PWD/sandbox/local/mnt
+    echo "Running tests from fuse"
+    # create the filesystem
+    mkdir -p sandbox/sharebox.fs sandbox/sharebox.mnt
+    mkfs -t sharebox sandbox/sharebox.fs > /dev/null
+
+    # mount it
+    sharebox sandbox/sharebox.fs sandbox/sharebox.mnt
+
+    # run the fuse tests
+    assert_success fuse_tester $PWD/sandbox/sharebox.mnt
     debug_interrupt
-    unmount local
+
+    # unmount
+    fusermount -u -z sandbox/sharebox.mnt > /dev/null
+
     clean
 }
 
 sync_simple()
 {
     echo "simple synchronization"
-    init local
-    init remote
-    mount local
-    mount remote
+    # create the filesystems
+    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
+    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+    mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
+
+    # mount them
+    sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+
     make_peers local remote
     echo "test" >> sandbox/local/mnt/test_file
     echo "pull remote" > sandbox/local/mnt/.command
@@ -41,18 +46,27 @@ sync_simple()
     # has been downloaded)
     assert_success diff test/local/mnt/test_file test/remote/mnt/test_file
     debug_interrupt
-    unmount local
-    unmount remote
+
+    # unmount the filesystems
+    fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
+    fusermount -u -z sandbox/remote/sharebox.mnt > /dev/null
+
     clean
 }
 
 sync_normal_conflict()
 {
     echo "synchronization with normal conflict"
-    init local
-    init remote
-    mount local
-    mount remote
+    # create the filesystems
+    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
+    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+    mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
+
+    # mount them
+    sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+
     make_peers local remote
     echo "test_line" >> test/local/mnt/test_file
     ./sharebox.py -c sync test/remote/mnt
@@ -64,18 +78,27 @@ sync_normal_conflict()
     # but diffing should fail
     assert_fail diff test/local/mnt/test_file test/remote/mnt/test_file
     debug_interrupt
-    unmount local
-    unmount remote
+
+    # unmount the filesystems
+    fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
+    fusermount -u -z sandbox/remote/sharebox.mnt > /dev/null
+
     clean
 }
 
 sync_delete_conflict()
 {
     echo "synchronization with delete conflict"
-    init local
-    init remote
-    mount local
-    mount remote
+    # create the filesystems
+    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
+    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+    mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
+
+    # mount them
+    sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+
     make_peers local remote
     echo "test_line" >> test/local/mnt/test_file
     ./sharebox.py -c sync test/remote/mnt
@@ -87,10 +110,12 @@ sync_delete_conflict()
     # diffing should fail
     assert_fail diff test/local/mnt/test_file test/remote/mnt/test_file
     debug_interrupt
-    unmount local
-    unmount remote
+
+    # unmount the filesystems
+    fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
+    fusermount -u -z sandbox/remote/sharebox.mnt > /dev/null
+
     clean
 }
 
-mount_unmount
 fuse

@@ -13,6 +13,8 @@ sharebox()
 
 mkfs()
 {
+    [[ $1 == "-t" ]] && [[ $2 == "sharebox" ]] || exit 1
+    shift 2
     $PWD/../mkfs.sharebox $@
 }
 
@@ -21,37 +23,10 @@ fuse_tester()
     $PWD/lib/fuse_tester $@
 }
 
-init()
-{
-    mkdir -p sandbox/$1/mnt sandbox/$1/fs
-    mkfs sandbox/$1/fs >/dev/null
-}
-
-mount()
-{
-    sharebox sandbox/$1/fs sandbox/$1/mnt
-}
-
-unmount()
-{
-    fusermount -u -z sandbox/$1/mnt >/dev/null
-}
-
 clean()
 {
     chmod -R +w sandbox
     rm -rf sandbox
-}
-
-remote_add()
-{
-    (cd test/$1/git && git remote add $2 ../../$2/git && cd -) >/dev/null
-}
-
-make_peers()
-{
-    remote_add $1 $2
-    remote_add $2 $1
 }
 
 debug_interrupt()
