@@ -2,10 +2,6 @@
 
 # functions for sharebox test suite
 
-if test $1; then
-    interactive=1
-fi
-
 sharebox()
 {
     $PWD/../sharebox $@
@@ -29,21 +25,24 @@ clean()
     rm -rf sandbox
 }
 
-debug_interrupt()
+assert_success()
 {
-    if test $interactive; then
-        echo "Press enter to continue."
+    res=$($@ 2>&1)
+    if [[ $? -ne 0 ]]; then
+        echo "Error: the command '$@' failed, printing:"
+        echo "$res"
+        echo "Press enter to continue"
         read anykey
     fi
 }
 
-assert_success()
-{
-    ($@ 2>&1) >/dev/null || echo "Error: This failed: $@"
-}
-
 assert_fail()
 {
-    ($@ 2>&1) >/dev/null && echo "Error: This succeeded: $@"
+    res=$($@ 2>&1)
+    if [[ $? -eq 0 ]]; then
+        echo "Error: the command '$@' succeeded, printing:"
+        echo "$res"
+        echo "Press enter to continue"
+        read anykey
+    fi
 }
-
