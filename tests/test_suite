@@ -5,11 +5,13 @@
 fuse()
 {
     echo "Running tests from fuse"
+
     # create the filesystem
-    mkdir -p sandbox/sharebox.fs sandbox/sharebox.mnt
+    mkdir -p sandbox/sharebox.fs
     mkfs -t sharebox sandbox/sharebox.fs > /dev/null
 
     # mount it
+    mkdir -p sandbox/sharebox.mnt
     sharebox sandbox/sharebox.fs sandbox/sharebox.mnt
 
     # run the fuse tests
@@ -21,28 +23,77 @@ fuse()
     clean
 }
 
+sync_no_peers()
+{
+    echo "Missing peer"
+
+    # create the filesystem
+    mkdir -p sandbox/sharebox.fs
+    mkfs -t sharebox sandbox/sharebox.fs > /dev/null
+
+    # mount it
+    mkdir -p sandbox/sharebox.mnt
+    sharebox sandbox/sharebox.fs sandbox/sharebox.mnt
+
+    # trigger a synchronization
+    echo "get_changes unexisting_peer" > sandbox/sharebox.mnt/.command
+    assert_fail test $? -eq 0
+
+    # unmount the filesystems
+    fusermount -u -z sandbox/sharebox.mnt > /dev/null
+
+    clean
+}
+
+sync_bad_url()
+{
+    echo "Bad url"
+
+    # create the filesystem
+    mkdir -p sandbox/sharebox.fs
+    mkfs -t sharebox sandbox/sharebox.fs > /dev/null
+
+    # mount it
+    mkdir -p sandbox/sharebox.mnt
+    sharebox sandbox/sharebox.fs sandbox/sharebox.mnt
+
+    # add some peer with a bad url
+    echo "peer_locate some_peer some_bad_url" > sandbox/sharebox.mnt/.command
+
+    # triggering a synchronization should fail
+    echo "get_changes local" > sandbox/sharebox.mnt/.command
+    assert_fail test $? -eq 0
+
+    # unmount the filesystems
+    fusermount -u -z sandbox/sharebox.mnt > /dev/null
+
+    clean
+}
+
 sync_success()
 {
     echo "Simple synchronization"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # add local as a peer of remote
-    # syntax: peer_alias <alias> <master-git-url>
-    assert_success echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    # syntax: peer_locate <alias> <master-git-url>
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     # create a file on local side
     echo "test_line" > sandbox/local/sharebox.mnt/test_file
 
     # trigger a synchronization on remote side
-    assert_success echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    assert_success test $? -eq 0
 
     # after sync, the file must exist
     assert_success test -e sandbox/remote/sharebox.mnt/test_file
@@ -61,78 +112,36 @@ sync_success()
     clean
 }
 
-sync_no_peers()
-{
-    echo "Synchronisation and missing peer"
-    # create the filesystem
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
-    mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-
-    # mount it
-    sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
-
-    # trigger a synchronization
-    assert_fail echo "get_changes unexisting_peer" > sandbox/local/sharebox.mnt/.command
-
-    # unmount the filesystems
-    fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
-
-    clean
-}
-
-sync_bad_url()
-{
-    echo "bad url"
-    # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
-    mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
-    mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
-
-    # mount them
-    sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
-    sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
-
-    # add local with a bad url
-    assert_success echo "peer_alias local bad_url" > sandbox/remote/sharebox.mnt/.command
-
-    # triggering a synchronization on remote side should fail
-    assert_fail echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
-
-    # unmount the filesystems
-    fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
-    fusermount -u -z sandbox/remote/sharebox.mnt > /dev/null
-
-    clean
-}
-
 sync_modify_url()
 {
     echo "change url"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # add local with a bad url
-    assert_success echo "peer_alias local bad_url" > sandbox/remote/sharebox.mnt/.command
+    echo "peer_locate local bad_url" > sandbox/remote/sharebox.mnt/.command
 
     # create a file on local side
     echo "test_line" > sandbox/local/sharebox.mnt/test_file
 
     # triggering a synchronization on remote side should fail
-    assert_fail echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    assert_fail test $? -eq 0
 
     # relocate the url
-    assert_success echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     # triggering a synchronization on remote side should now succed
-    assert_success echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    assert_success test $? -eq 0
 
     # after sync, the file must exist
     assert_success test -e sandbox/remote/sharebox.mnt/test_file
@@ -154,28 +163,30 @@ sync_modify_url()
 sync_remove_peer()
 {
     echo "removing a peer"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # add local as a peer of remote
-    # syntax: peer_alias <alias> <master-git-url>
-    echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    # syntax: peer_locate <alias> <master-git-url>
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     # trigger a synchronization on remote side
     echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
 
-    # trigger a synchronization on remote side
+    # remove the peer "local" on remote side
     echo "peer_remove local" > sandbox/remote/sharebox.mnt/.command
 
     # trigger a synchronization on remote side
-    assert_fail echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+    assert_fail test $? -eq 0
 
     # unmount the filesystems
     fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
@@ -187,31 +198,29 @@ sync_remove_peer()
 sync_normal_conflict()
 {
     echo "synchronization with normal conflict"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # make them peers
-    echo "peer_alias remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
-    echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    echo "peer_locate remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     # create a file on local side
-    echo "test_line" > sandbox/local/sharebox.mnt/test_file
+    touch sandbox/local/sharebox.mnt/test_file
 
     # trigger a synchronization on remote side
     echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
 
     # test the file has been created on remote side
     assert_success test -e sandbox/remote/sharebox.mnt/test_file
-
-    # get the content of the file
-    touch sandbox/remote/sharebox.mnt/test_file
 
     # operate incompatible modifications on test_file
     echo "test_line_local" > sandbox/local/sharebox.mnt/test_file
@@ -220,8 +229,12 @@ sync_normal_conflict()
     # import the changes in local
     echo "get_changes remote" > sandbox/remote/sharebox.mnt/.command
 
-    # a conflicting file should exist, containing the content of remote
-    assert_success ls -a sandbox/remote/sharebox.mnt | grep ".test_file.remote"
+    # a conflicting file should exist
+    conflict=$(ls -a1 sandbox/remote/sharebox.mnt | grep ".test_file.remote")
+    assert_success test $? -eq 0
+
+    # it should contain the content of remote
+    assert_success grep "test_line_remote" sandbox/local/sharebox.mnt/$conflict
 
     # unmount the filesystems
     fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
@@ -233,31 +246,29 @@ sync_normal_conflict()
 sync_resolve_normal_conflict_local()
 {
     echo "resolving a normal conflict in favor of local"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # make them peers
-    echo "peer_alias remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
-    echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    echo "peer_locate remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     # create a file on local side
-    echo "test_line" > sandbox/local/sharebox.mnt/test_file
+    touch sandbox/local/sharebox.mnt/test_file
 
     # trigger a synchronization on remote side
     echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
 
     # test the file has been created on remote side
     assert_success test -e sandbox/remote/sharebox.mnt/test_file
-
-    # get the content of the file
-    touch sandbox/remote/sharebox.mnt/test_file
 
     # operate incompatible modifications on test_file
     echo "test_line_local" > sandbox/local/sharebox.mnt/test_file
@@ -269,7 +280,14 @@ sync_resolve_normal_conflict_local()
     # a conflicting file should exist, containing the content of remote
     conflict=$(ls -a1 sandbox/remote/sharebox.mnt | grep ".test_file.remote")
 
-    rm $conflict
+    # the conflict is solved simply by removing it (local version is kept)
+    rm sandbox/local/sharebox.mnt/$conflict
+
+    # trigger a synchronization on remote side
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+
+    # the file should contain the local version
+    assert_success grep "test_line_local" sandbox/remote/sharebox.mnt/test_file
 
     # unmount the filesystems
     fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
@@ -281,31 +299,29 @@ sync_resolve_normal_conflict_local()
 sync_resolve_normal_conflict_remote()
 {
     echo "resolving a normal conflict in favor of remote"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # make them peers
-    echo "peer_alias remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
-    echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    echo "peer_locate remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     # create a file on local side
-    echo "test_line" > sandbox/local/sharebox.mnt/test_file
+    touch sandbox/local/sharebox.mnt/test_file
 
     # trigger a synchronization on remote side
     echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
 
     # test the file has been created on remote side
     assert_success test -e sandbox/remote/sharebox.mnt/test_file
-
-    # get the content of the file
-    touch sandbox/remote/sharebox.mnt/test_file
 
     # operate incompatible modifications on test_file
     echo "test_line_local" > sandbox/local/sharebox.mnt/test_file
@@ -317,8 +333,68 @@ sync_resolve_normal_conflict_remote()
     # a conflicting file should exist, containing the content of remote
     conflict=$(ls -a1 sandbox/remote/sharebox.mnt | grep ".test_file.remote")
 
-    cp $conflict test_file
-    rm $conflict
+    # the conflict is solved simply by moving it to local
+    mv sandbox/local/sharebox.mnt/$conflict sandbox/local/sharebox.mnt/test_file
+
+    # trigger a synchronization on remote side
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+
+    # check the content of the file
+    assert_success grep "test_line_remote" sandbox/remote/sharebox.mnt/test_file
+
+    # unmount the filesystems
+    fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
+    fusermount -u -z sandbox/remote/sharebox.mnt > /dev/null
+
+    clean
+}
+
+sync_resolve_normal_conflict_remote2()
+{
+    echo "resolving a normal conflict in favor of remote (2)"
+
+    # create the filesystems
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
+    mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
+    mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
+
+    # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
+    sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
+
+    # make them peers
+    echo "peer_locate remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+
+    # create a file on local side
+    touch sandbox/local/sharebox.mnt/test_file
+
+    # trigger a synchronization on remote side
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+
+    # test the file has been created on remote side
+    assert_success test -e sandbox/remote/sharebox.mnt/test_file
+
+    # operate incompatible modifications on test_file
+    echo "test_line_local" > sandbox/local/sharebox.mnt/test_file
+    echo "test_line_remote" > sandbox/remote/sharebox.mnt/test_file
+
+    # import the changes in local
+    echo "get_changes remote" > sandbox/remote/sharebox.mnt/.command
+
+    # a conflicting file should exist, containing the content of remote
+    conflict=$(ls -a1 sandbox/remote/sharebox.mnt | grep ".test_file.remote")
+
+    # the conflict is solved simply by moving it to local
+    cp sandbox/local/sharebox.mnt/$conflict sandbox/local/sharebox.mnt/test_file
+    rm sandbox/local/sharebox.mnt/$conflict
+
+    # trigger a synchronization on remote side
+    echo "get_changes local" > sandbox/remote/sharebox.mnt/.command
+
+    # check the content of the file
+    assert_success grep "test_line_remote" sandbox/remote/sharebox.mnt/test_file
 
     # unmount the filesystems
     fusermount -u -z sandbox/local/sharebox.mnt > /dev/null
@@ -330,19 +406,20 @@ sync_resolve_normal_conflict_remote()
 sync_delete_conflict()
 {
     echo "synchronization with delete conflict"
+
     # create the filesystems
-    mkdir -p sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
+    mkdir -p sandbox/local/sharebox.fs sandbox/remote/sharebox.fs
     mkfs -t sharebox sandbox/local/sharebox.fs > /dev/null
-    mkdir -p sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
     mkfs -t sharebox sandbox/remote/sharebox.fs > /dev/null
 
     # mount them
+    mkdir -p sandbox/local/sharebox.mnt sandbox/remote/sharebox.mnt
     sharebox sandbox/local/sharebox.fs sandbox/local/sharebox.mnt
     sharebox sandbox/remote/sharebox.fs sandbox/remote/sharebox.mnt
 
     # make them peers
-    echo "peer_alias remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
-    echo "peer_alias local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
+    echo "peer_locate remote $PWD/sandbox/remote/sharebox.fs/master" > sandbox/local/sharebox.mnt/.command
+    echo "peer_locate local $PWD/sandbox/local/sharebox.fs/master" > sandbox/remote/sharebox.mnt/.command
 
     echo "test_line" > sandbox/local/sharebox.mnt/test_file
 
@@ -379,4 +456,7 @@ sync_remove_peer
 sync_normal_conflict
 sync_resolve_normal_conflict_local
 sync_resolve_normal_conflict_remote
+sync_resolve_normal_conflict_remote2
 sync_delete_conflict
+
+exit $SUCCESS

@@ -2,6 +2,8 @@
 
 # functions for sharebox test suite
 
+SUCCESS=0
+
 sharebox()
 {
     $PWD/../sharebox $@
@@ -19,12 +21,6 @@ fuse_tester()
     $PWD/lib/fuse_tester $@
 }
 
-clean()
-{
-    chmod -R +w sandbox
-    rm -rf sandbox
-}
-
 assert_success()
 {
     res=$($@ 2>&1)
@@ -32,6 +28,7 @@ assert_success()
         echo "Error: the command '$@' failed, printing:"
         echo "$res"
         echo "Press enter to continue"
+        SUCCESS=1
         read anykey
     fi
 }
@@ -43,6 +40,13 @@ assert_fail()
         echo "Error: the command '$@' succeeded, printing:"
         echo "$res"
         echo "Press enter to continue"
+        SUCCESS=1
         read anykey
     fi
+}
+
+clean()
+{
+    chmod -R +w sandbox
+    rm -rf sandbox
 }
