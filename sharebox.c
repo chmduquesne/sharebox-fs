@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
@@ -33,7 +34,7 @@
 struct sharebox
 {
     pthread_mutex_t rwlock;
-    const char *root;
+    const char *reporoot;
     const char *mountpoint;
     bool deep_replicate;
     const char *write_callback;
@@ -64,10 +65,11 @@ static struct fuse_opt sharebox_opts[] = {
 };
 
 
-static void fullpath(char fpath[PATH_MAX], const char *path)
+static void sharebox_path(char spath[PATH_MAX], const char *path)
 {
-    strcpy(fpath, sharebox.root);
-    strncat(fpath, path, PATH_MAX);
+    strcpy(spath, sharebox.reporoot);
+    strncat(spath, "/files", PATH_MAX);
+    strncat(spath, path, PATH_MAX);
 }
 
 /*
@@ -78,10 +80,18 @@ static int sharebox_getattr(const char *path, struct stat *stbuf)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = lstat(fpath, stbuf);
+    res = lstat(spath, stbuf);
+    if (annexed(sharebox.reporoot, spath)) {
+        /* we set the file type mask to 0 */
+        stbuf->st_mode &= ~S_IFMT;
+        /* we then force regular file */
+        stbuf->st_mode |= S_IFREG;
+        /* we also force writable */
+        stbuf->st_mode |= S_IWUSR;
+    }
     if (res == -1)
         return -errno;
 
@@ -92,10 +102,10 @@ static int sharebox_access(const char *path, int mask)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = access(fpath, mask);
+    res = access(spath, mask);
     if (res == -1)
         return -errno;
 
@@ -106,10 +116,10 @@ static int sharebox_readlink(const char *path, char *buf, size_t size)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = readlink(fpath, buf, size - 1);
+    res = readlink(spath, buf, size - 1);
     if (res == -1)
         return -errno;
 
@@ -126,10 +136,10 @@ static int sharebox_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     (void) offset;
     (void) fi;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    dp = opendir(fpath);
+    dp = opendir(spath);
     if (dp == NULL)
         return -errno;
 
@@ -150,19 +160,19 @@ static int sharebox_mknod(const char *path, mode_t mode, dev_t rdev)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
     /* On Linux this could just be 'mknod(path, mode, rdev)' but this
        is more portable */
     if (S_ISREG(mode)) {
-        res = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
+        res = open(spath, O_CREAT | O_EXCL | O_WRONLY, mode);
         if (res >= 0)
             res = close(res);
     } else if (S_ISFIFO(mode))
-        res = mkfifo(fpath, mode);
+        res = mkfifo(spath, mode);
     else
-        res = mknod(fpath, mode, rdev);
+        res = mknod(spath, mode, rdev);
     if (res == -1)
         return -errno;
 
@@ -173,10 +183,10 @@ static int sharebox_mkdir(const char *path, mode_t mode)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = mkdir(fpath, mode);
+    res = mkdir(spath, mode);
     if (res == -1)
         return -errno;
 
@@ -187,10 +197,10 @@ static int sharebox_unlink(const char *path)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = unlink(fpath);
+    res = unlink(spath);
     if (res == -1)
         return -errno;
 
@@ -201,10 +211,10 @@ static int sharebox_rmdir(const char *path)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = rmdir(fpath);
+    res = rmdir(spath);
     if (res == -1)
         return -errno;
 
@@ -215,10 +225,10 @@ static int sharebox_symlink(const char *target, const char *linkname)
 {
     int res;
 
-    char flinkname[PATH_MAX];
-    fullpath(flinkname, linkname);
+    char slinkname[PATH_MAX];
+    sharebox_path(slinkname, linkname);
 
-    res = symlink(target, flinkname);
+    res = symlink(target, slinkname);
     if (res == -1)
         return -errno;
 
@@ -229,13 +239,13 @@ static int sharebox_rename(const char *from, const char *to)
 {
     int res;
 
-    char ffrom[PATH_MAX];
-    char fto[PATH_MAX];
+    char sfrom[PATH_MAX];
+    char sto[PATH_MAX];
 
-    fullpath(ffrom, from);
-    fullpath(fto, to);
+    sharebox_path(sfrom, from);
+    sharebox_path(sto, to);
 
-    res = rename(ffrom, fto);
+    res = rename(sfrom, sto);
     if (res == -1)
         return -errno;
 
@@ -246,10 +256,10 @@ static int sharebox_chmod(const char *path, mode_t mode)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = chmod(fpath, mode);
+    res = chmod(spath, mode);
     if (res == -1)
         return -errno;
 
@@ -260,10 +270,10 @@ static int sharebox_chown(const char *path, uid_t uid, gid_t gid)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = lchown(fpath, uid, gid);
+    res = lchown(spath, uid, gid);
     if (res == -1)
         return -errno;
 
@@ -274,10 +284,10 @@ static int sharebox_truncate(const char *path, off_t size)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = truncate(fpath, size);
+    res = truncate(spath, size);
     if (res == -1)
         return -errno;
 
@@ -288,16 +298,16 @@ static int sharebox_utimens(const char *path, const struct timespec ts[2])
 {
     int res;
     struct timeval tv[2];
-    char fpath[PATH_MAX];
+    char spath[PATH_MAX];
 
     tv[0].tv_sec = ts[0].tv_sec;
     tv[0].tv_usec = ts[0].tv_nsec / 1000;
     tv[1].tv_sec = ts[1].tv_sec;
     tv[1].tv_usec = ts[1].tv_nsec / 1000;
 
-    fullpath(fpath, path);
+    sharebox_path(spath, path);
 
-    res = utimes(fpath, tv);
+    res = utimes(spath, tv);
     if (res == -1)
         return -errno;
 
@@ -308,10 +318,10 @@ static int sharebox_open(const char *path, struct fuse_file_info *fi)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = open(fpath, fi->flags);
+    res = open(spath, fi->flags);
     if (res == -1)
         return -errno;
 
@@ -326,10 +336,10 @@ static int sharebox_read(const char *path, char *buf, size_t size, off_t offset,
     int res;
     (void) fi;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    fd = open(fpath, O_RDONLY);
+    fd = open(spath, O_RDONLY);
     if (fd == -1)
         return -errno;
 
@@ -348,10 +358,10 @@ static int sharebox_write(const char *path, const char *buf, size_t size,
     int res;
     (void) fi;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    fd = open(fpath, O_WRONLY);
+    fd = open(spath, O_WRONLY);
     if (fd == -1)
         return -errno;
 
@@ -367,10 +377,10 @@ static int sharebox_statfs(const char *path, struct statvfs *stbuf)
 {
     int res;
 
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char spath[PATH_MAX];
+    sharebox_path(spath, path);
 
-    res = statvfs(fpath, stbuf);
+    res = statvfs(spath, stbuf);
     if (res == -1)
         return -errno;
 
@@ -451,13 +461,13 @@ sharebox_opt_proc
             fuse_main(outargs->argc, outargs->argv, &sharebox_oper, NULL);
             exit(0);
         case FUSE_OPT_KEY_NONOPT:
-            if (!sharebox.root) {
+            if (!sharebox.reporoot) {
                 res = stat(arg, &st);
                 if (res == -1){
                     perror(arg);
                     exit(1);
                 }
-                sharebox.root = realpath(arg, NULL);
+                sharebox.reporoot = realpath(arg, NULL);
                 return 0;
             }
             return 1;
