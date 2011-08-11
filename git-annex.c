@@ -47,10 +47,27 @@ int git_annex_get(const char *repodir, const char *path)
     return fmt_system("git annex get -- \"%s\"", path);
 }
 
-int git_commit(const char *repodir, const char *message)
+int git_add(const char *repodir, const char *path)
 {
     chdir(repodir);
-    return fmt_system("git ci -m \"%s\"", message);
+    return fmt_system("git add -- \"%s\"", path);
+}
+
+int git_commit(const char *repodir, const char *format, ...)
+{
+    va_list ap;
+    size_t arg_max;
+    char *message;
+
+    arg_max = sysconf(_SC_ARG_MAX);
+    message = malloc(arg_max - 16);
+
+    va_start(ap, format);
+    vsnprintf(message, arg_max, format, ap);
+    va_end(ap);
+
+    chdir(repodir);
+    return fmt_system("git commit -m \"%s\"", message);
 }
 
 int git_rm(const char *repodir, const char *path)
@@ -65,16 +82,22 @@ int git_mv(const char *repodir, const char *old, const char *new)
     return fmt_system("git mv -- \"%s\" \"%s\"", old, new);
 }
 
-int annexed(const char *repodir, const char *path)
+int git_annexed(const char *repodir, const char *path)
 {
     struct stat st;
-    char buf[PATH_MAX];
+    char realpathbuf[PATH_MAX];
+    char gitannexpathbuf[PATH_MAX];
+    snprintf(gitannexpathbuf, PATH_MAX, "%s/.git/annex/objects", repodir);
     if (stat(path, &st) == -1)
         perror(path);
     if (!S_ISLNK(st.st_mode))
         return 0;
-    if (readlink(path, buf, PATH_MAX) == -1)
+    if (realpath(path, realpathbuf) == NULL)
         perror(path);
-    return (strstr(buf, ".git/annex/objects") != NULL);
+    return (strstr(realpathbuf, gitannexpathbuf) == realpathbuf);
 }
 
+int git_ignored(const char *repodir, const char *path)
+{
+    return 0;
+}
