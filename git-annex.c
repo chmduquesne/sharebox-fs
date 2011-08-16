@@ -10,18 +10,22 @@
 #include <sys/stat.h>
 #include <limits.h>
 
+/*
+ * wrapper around system() to execute a formatted command. Used as:
+ * fmt_system("mycommand %s", "my args");
+ */
 static int fmt_system(const char *format, ...)
 {
     va_list ap;
-    size_t arg_max;
+    size_t ARG_MAX;
     char *command;
     int status;
 
-    arg_max = sysconf(_SC_ARG_MAX);
-    command = malloc(arg_max);
+    ARG_MAX = sysconf(_SC_ARG_MAX);
+    command = malloc(ARG_MAX);
 
     va_start(ap, format);
-    vsnprintf(command, arg_max, format, ap);
+    vsnprintf(command, ARG_MAX, format, ap);
     va_end(ap);
 
     status = system(command);
@@ -56,14 +60,14 @@ int git_add(const char *repodir, const char *path)
 int git_commit(const char *repodir, const char *format, ...)
 {
     va_list ap;
-    size_t arg_max;
+    size_t ARG_MAX;
     char *message;
 
-    arg_max = sysconf(_SC_ARG_MAX);
-    message = malloc(arg_max - 16);
+    ARG_MAX = sysconf(_SC_ARG_MAX);
+    message = malloc(ARG_MAX - 16);
 
     va_start(ap, format);
-    vsnprintf(message, arg_max, format, ap);
+    vsnprintf(message, ARG_MAX, format, ap);
     va_end(ap);
 
     chdir(repodir);
@@ -99,5 +103,23 @@ int git_annexed(const char *repodir, const char *path)
 
 int git_ignored(const char *repodir, const char *path)
 {
-    return 0;
+    FILE *pipe;
+    char buf[PATH_MAX], command[PATH_MAX + 40], *p;
+    int res;
+
+    strcpy(command, "git ls-files -c -o -d -m --full-name -- ");
+    strncat(command, path, PATH_MAX);
+
+    res = 1;
+    if ((pipe = popen(command, "r" )) == NULL)
+        return -1;
+    while (fgets(buf, sizeof buf, pipe) != NULL || !feof(pipe)) {
+        if ((p = strchr(buf, '\n')))
+            *p = '\0';
+        if (strcmp(buf, path) == 0)
+            res = 0;
+    }
+    if (pclose(pipe) == -1)
+        return -1;
+    return res;
 }
