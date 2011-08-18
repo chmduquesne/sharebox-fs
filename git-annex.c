@@ -28,6 +28,7 @@ static int fmt_system(const char *format, ...)
     vsnprintf(command, ARG_MAX, format, ap);
     va_end(ap);
 
+    printf("%s\n", command);
     status = system(command);
     free(command);
     return status;
@@ -36,25 +37,29 @@ static int fmt_system(const char *format, ...)
 int git_annex_unlock(const char *repodir, const char *path)
 {
     chdir(repodir);
-    return fmt_system("git annex unlock -- \"%s\"", path);
+    return fmt_system("git annex unlock -- \"%s\"",
+            path + strlen(repodir) + 1);
 }
 
 int git_annex_add(const char *repodir, const char *path)
 {
     chdir(repodir);
-    return fmt_system("git annex add -- \"%s\"", path);
+    return fmt_system("git annex add -- \"%s\"",
+            path + strlen(repodir) + 1);
 }
 
 int git_annex_get(const char *repodir, const char *path)
 {
     chdir(repodir);
-    return fmt_system("git annex get -- \"%s\"", path);
+    return fmt_system("git annex get -- \"%s\"",
+            path + strlen(repodir) + 1);
 }
 
 int git_add(const char *repodir, const char *path)
 {
     chdir(repodir);
-    return fmt_system("git add -- \"%s\"", path);
+    return fmt_system("git add -- \"%s\"",
+            path + strlen(repodir) + 1);
 }
 
 int git_commit(const char *repodir, const char *format, ...)
@@ -77,38 +82,42 @@ int git_commit(const char *repodir, const char *format, ...)
 int git_rm(const char *repodir, const char *path)
 {
     chdir(repodir);
-    return fmt_system("git rm -- \"%s\"", path);
+    return fmt_system("git rm -- \"%s\"", path + strlen(repodir) + 1);
 }
 
 int git_mv(const char *repodir, const char *old, const char *new)
 {
     chdir(repodir);
-    return fmt_system("git mv -- \"%s\" \"%s\"", old, new);
+    return fmt_system("git mv -- \"%s\" \"%s\"",
+            old + strlen(repodir) + 1, new + strlen(repodir) + 1);
 }
 
 int git_annexed(const char *repodir, const char *path)
 {
     struct stat st;
-    char realpathbuf[PATH_MAX];
-    char gitannexpathbuf[PATH_MAX];
-    snprintf(gitannexpathbuf, PATH_MAX, "%s/.git/annex/objects", repodir);
-    if (stat(path, &st) == -1)
+    char realpathbuf[FILENAME_MAX];
+    char gitannexpathbuf[FILENAME_MAX];
+    snprintf(gitannexpathbuf, FILENAME_MAX, "%s/.git/annex/objects", repodir);
+    if (lstat(path, &st) == -1)
         perror(path);
     if (!S_ISLNK(st.st_mode))
         return 0;
     if (realpath(path, realpathbuf) == NULL)
         perror(path);
-    return (strstr(realpathbuf, gitannexpathbuf) == realpathbuf);
+    return (strncmp(realpathbuf, gitannexpathbuf, strlen(gitannexpathbuf)) == 0);
 }
 
 int git_ignored(const char *repodir, const char *path)
 {
     FILE *pipe;
-    char buf[PATH_MAX], command[PATH_MAX + 40], *p;
+    char buf[FILENAME_MAX], command[FILENAME_MAX + 42], *p;
     int res;
 
-    strcpy(command, "git ls-files -c -o -d -m --full-name -- ");
-    strncat(command, path, PATH_MAX);
+    chdir(repodir);
+
+    snprintf(command, sizeof command,
+            "git ls-files -c -o -d -m --full-name -- \"%s\"",
+            path + strlen(repodir) + 1);
 
     res = 1;
     if ((pipe = popen(command, "r" )) == NULL)
