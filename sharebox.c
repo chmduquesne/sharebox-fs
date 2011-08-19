@@ -506,15 +506,29 @@ static int sharebox_write(const char *path, const char *buf, size_t size,
         if((res = pwrite(fd, buf, size, offset)) != -1)
             close(fd);
 
-    git_annex_add(sharebox.reporoot, fpath);
-    printf("commit\n");
-    git_commit(sharebox.reporoot, "wrote on %s", path+1);
-
     pthread_mutex_unlock(&sharebox.rwlock);
 
     if (fd == -1 || res == -1)
         return -errno;
     return res;
+}
+
+static int sharebox_release(const char *path, struct fuse_file_info *fi)
+{
+    debug("(%s, fi)\n", path);
+    pthread_mutex_lock(&sharebox.rwlock);
+
+    char fpath[FILENAME_MAX];
+    fullpath(fpath, path);
+
+    if (!git_ignored(sharebox.reporoot, fpath)){
+        git_annex_add(sharebox.reporoot, fpath);
+        git_commit(sharebox.reporoot, "released %s", path+1);
+    }
+
+    pthread_mutex_unlock(&sharebox.rwlock);
+
+    return 0;
 }
 
 static int sharebox_statfs(const char *path, struct statvfs *stbuf)
@@ -550,6 +564,7 @@ static struct fuse_operations sharebox_oper = {
     .open       = sharebox_open,
     .read       = sharebox_read,
     .write      = sharebox_write,
+    .release    = sharebox_release,
     .statfs     = sharebox_statfs,
 };
 
