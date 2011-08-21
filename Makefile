@@ -1,7 +1,7 @@
 INSTALL_PREFIX=/usr/local
 
-CFLAGS=`pkg-config fuse --cflags` `pkg-config glib --cflags`
-LDFLAGS=`pkg-config fuse --libs` `pkg-config glib --libs`
+CFLAGS=`pkg-config fuse --cflags` -DDEBUG
+LDFLAGS=`pkg-config fuse --libs`
 
 sharebox: sharebox.o git-annex.o
 	gcc -g -Wall $(LDFLAGS) -o sharebox sharebox.o git-annex.o
