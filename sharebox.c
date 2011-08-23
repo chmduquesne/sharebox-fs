@@ -26,7 +26,11 @@
 #include <pthread.h>
 #include "git-annex.h"
 
-#define debug(_fmt, ...)  fprintf(stdout, "%s: " _fmt, __FUNCTION__, __VA_ARGS__)
+#ifdef DEBUG
+#define debug(...) printf(__VA_ARGS__)
+#else
+#define debug(...)
+#endif
 // TODO: fix the errno (save them as soon as they happen)
 
 /*
@@ -84,7 +88,8 @@ static int ondisk(const char *lnk)
 
 static int sharebox_getattr(const char *path, struct stat *stbuf)
 {
-    debug("(%s, stbuf)\n", path);
+    debug("sharebox_getattr(%s, stbuf)\n", path);
+
     int res;
     char fpath[FILENAME_MAX];
     fullpath(fpath, path);
@@ -108,7 +113,8 @@ static int sharebox_getattr(const char *path, struct stat *stbuf)
 
 static int sharebox_access(const char *path, int mask)
 {
-    debug("(%s, %d)\n", path, mask);
+    debug("sharebox_access(%s, %d)\n", path, mask);
+
     int res;
 
     char fpath[FILENAME_MAX];
@@ -131,7 +137,8 @@ static int sharebox_access(const char *path, int mask)
 
 static int sharebox_readlink(const char *path, char *buf, size_t size)
 {
-    debug("(%s, buf, size)\n", path);
+    debug("sharebox_readlink(%s, buf, size)\n", path);
+
     int res;
 
     char fpath[FILENAME_MAX];
@@ -149,9 +156,11 @@ static int sharebox_readlink(const char *path, char *buf, size_t size)
 static int sharebox_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                off_t offset, struct fuse_file_info *fi)
 {
-    debug("(%s, buf, filler, offset, fi)\n", path);
+    debug("sharebox_readdir(%s, buf, filler, offset, fi)\n", path);
+
     DIR *dp;
     struct dirent *de;
+    namelist *branch, *b;
     (void) offset;
     (void) fi;
 
@@ -166,14 +175,34 @@ static int sharebox_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         if (filler(buf, de->d_name, NULL, 0))
             break;
     }
-
     closedir(dp);
+
+    /* We then list conflicting files */
+    branch = git_branches(sharebox.reporoot);
+    for (b = branch; b != NULL; b = b->next) {
+        namelist *files, *f;
+        files = conflicting_files(sharebox.reporoot, fpath, b->name);
+        for (f = files; f != NULL; f = f->next) {
+            char name[FILENAME_MAX];
+            strncpy(name, ".", FILENAME_MAX);
+            strncat(name, branch->name, FILENAME_MAX);
+            strncat(name, ".", FILENAME_MAX);
+            strncat(name, f->name, FILENAME_MAX);
+            strncat(name, ".conflict", FILENAME_MAX);
+            if (filler(buf, name, NULL, 0))
+                break;
+        }
+        free_namelist(files);
+    }
+    free_namelist(branch);
+
     return 0;
 }
 
 static int sharebox_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-    debug("(%s, mode, rdev)\n", path);
+    debug("sharebox_mknod(%s, mode, rdev)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -201,7 +230,8 @@ static int sharebox_mknod(const char *path, mode_t mode, dev_t rdev)
 
 static int sharebox_mkdir(const char *path, mode_t mode)
 {
-    debug("(%s, mode)\n", path);
+    debug("sharebox_mkdir(%s, mode)\n", path);
+
     int res;
 
     char fpath[FILENAME_MAX];
@@ -216,7 +246,8 @@ static int sharebox_mkdir(const char *path, mode_t mode)
 
 static int sharebox_unlink(const char *path)
 {
-    debug("(%s)\n", path);
+    debug("sharebox_unlink(%s)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -241,7 +272,8 @@ static int sharebox_unlink(const char *path)
 
 static int sharebox_rmdir(const char *path)
 {
-    debug("(%s)\n", path);
+    debug("sharebox_rmdir(%s)\n", path);
+
     int res;
 
     char fpath[FILENAME_MAX];
@@ -256,7 +288,8 @@ static int sharebox_rmdir(const char *path)
 
 static int sharebox_symlink(const char *target, const char *linkname)
 {
-    debug("(%s, %s)\n", target, linkname);
+    debug("sharebox_symlink(%s, %s)\n", target, linkname);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -281,7 +314,8 @@ static int sharebox_symlink(const char *target, const char *linkname)
 
 static int sharebox_rename(const char *from, const char *to)
 {
-    debug("(%s, %s)\n", from, to);
+    debug("sharebox_rename(%s, %s)\n", from, to);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -329,7 +363,8 @@ static int sharebox_rename(const char *from, const char *to)
 
 static int sharebox_chmod(const char *path, mode_t mode)
 {
-    debug("(%s, mode)\n", path);
+    debug("sharebox_chmod(%s, mode)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -354,7 +389,8 @@ static int sharebox_chmod(const char *path, mode_t mode)
 
 static int sharebox_chown(const char *path, uid_t uid, gid_t gid)
 {
-    debug("(%s, uid, gid)\n", path);
+    debug("sharebox_chown(%s, uid, gid)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -379,7 +415,8 @@ static int sharebox_chown(const char *path, uid_t uid, gid_t gid)
 
 static int sharebox_truncate(const char *path, off_t size)
 {
-    debug("(%s, size)\n", path);
+    debug("sharebox_truncate(%s, size)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -404,7 +441,8 @@ static int sharebox_truncate(const char *path, off_t size)
 
 static int sharebox_utimens(const char *path, const struct timespec ts[2])
 {
-    debug("(%s, ts)\n", path);
+    debug("sharebox_utimens(%s, ts)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -435,7 +473,8 @@ static int sharebox_utimens(const char *path, const struct timespec ts[2])
 
 static int sharebox_open(const char *path, struct fuse_file_info *fi)
 {
-    debug("(%s, fi)\n", path);
+    debug("sharebox_open(%s, fi)\n", path);
+
     int res;
     int flags;
 
@@ -447,7 +486,7 @@ static int sharebox_open(const char *path, struct fuse_file_info *fi)
     if (git_annexed(sharebox.reporoot, fpath))
         /* Get the file on the fly, remove W_OK if it was requested */
         if (!ondisk(fpath))
-            git_annex_get(sharebox.reporoot, fpath);
+            git_annex_get(sharebox.reporoot, fpath, NULL);
         if (!ondisk(fpath))
             return -EACCES;
         flags &= ~W_OK;
@@ -465,7 +504,8 @@ static int sharebox_open(const char *path, struct fuse_file_info *fi)
 static int sharebox_read(const char *path, char *buf, size_t size, off_t offset,
             struct fuse_file_info *fi)
 {
-    debug("(%s, buf, offset, fi)\n", path);
+    debug("sharebox_read(%s, buf, offset, fi)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int fd;
@@ -489,7 +529,8 @@ static int sharebox_read(const char *path, char *buf, size_t size, off_t offset,
 static int sharebox_write(const char *path, const char *buf, size_t size,
              off_t offset, struct fuse_file_info *fi)
 {
-    debug("(%s, buf, size, offset, fi)\n", path);
+    debug("sharebox_write(%s, buf, size, offset, fi)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     int fd;
@@ -515,7 +556,8 @@ static int sharebox_write(const char *path, const char *buf, size_t size,
 
 static int sharebox_release(const char *path, struct fuse_file_info *fi)
 {
-    debug("(%s, fi)\n", path);
+    debug("sharebox_release(%s, fi)\n", path);
+
     pthread_mutex_lock(&sharebox.rwlock);
 
     char fpath[FILENAME_MAX];
@@ -533,7 +575,8 @@ static int sharebox_release(const char *path, struct fuse_file_info *fi)
 
 static int sharebox_statfs(const char *path, struct statvfs *stbuf)
 {
-    debug("(%s, stbuf)\n", path);
+    debug("sharebox_statfs(%s, stbuf)\n", path);
+
     int res;
 
     char fpath[FILENAME_MAX];

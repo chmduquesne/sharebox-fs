@@ -48,11 +48,18 @@ int git_annex_add(const char *repodir, const char *path)
             path + strlen(repodir) + 1);
 }
 
-int git_annex_get(const char *repodir, const char *path)
+int git_annex_get(const char *repodir, const char *path,
+        const char *branch)
 {
+    int res;
     chdir(repodir);
-    return fmt_system("git annex get -- \"%s\"",
+    if (branch)
+        fmt_system("git checkout %s", branch);
+    res = fmt_system("git annex get -- \"%s\"",
             path + strlen(repodir) + 1);
+    if (branch)
+        fmt_system("git checkout master");
+    return res;
 }
 
 int git_add(const char *repodir, const char *path)
@@ -110,7 +117,7 @@ int git_annexed(const char *repodir, const char *path)
 int git_ignored(const char *repodir, const char *path)
 {
     FILE *pipe;
-    char buf[FILENAME_MAX], command[FILENAME_MAX + 42], *p;
+    char buf[BUFSIZ], command[256 + FILENAME_MAX], *p;
     int res;
 
     chdir(repodir);
@@ -131,4 +138,112 @@ int git_ignored(const char *repodir, const char *path)
     if (pclose(pipe) == -1)
         return -1;
     return res;
+}
+
+namelist* git_branches(const char *repodir)
+{
+    FILE *pipe;
+    char buf[BUFSIZ], *p;
+    namelist *res, *curr;
+    res = curr = NULL;
+
+    chdir(repodir);
+    if ((pipe = popen("git branch", "r")) == NULL)
+        return NULL;
+
+    while (fgets(buf, sizeof buf, pipe) != NULL || !feof(pipe)) {
+        if ((p = strchr(buf, '\n')))
+            *p = '\0';
+        if (strcmp(buf, "master") != 0) {
+            namelist *b = malloc(sizeof(namelist));
+            strcpy(b->name, buf + 2);
+            b->next = NULL;
+            if (curr) {
+                curr->next = b;
+                curr = b;
+            }
+            else
+                res = curr = b;
+        }
+    }
+    if (pclose(pipe) == -1)
+        return NULL;
+
+    return res;
+}
+
+namelist* conflicting_files(const char *repodir, const char *path,
+        const char *branch)
+{
+    FILE *pipe;
+    char buf[BUFSIZ], *p, *s;
+    namelist *res, *curr, *check, *n;
+
+    chdir(repodir);
+    fmt_system("git checkout %s", branch);
+    fmt_system("git merge master");
+
+    if ((pipe = popen("git ls-files -u", "r")) == NULL)
+        return NULL;
+
+    res = curr = NULL;
+    while (fgets(buf, sizeof buf, pipe) != NULL || !feof(pipe)) {
+        /* remove trailing \n */
+        if ((p = strchr(buf, '\n')))
+            *p = '\0';
+        /* move after the \t */
+        if (!(s = strchr(buf, '\t')))
+            break;
+        n = malloc(sizeof(namelist));
+        /* skip the directories */
+        if (strstr(s + 1, path) && !strchr((s + 1 + strlen(path)), '/')) {
+            strncpy(n->name, s + 1, sizeof(n->name));
+        }
+        /* remove if already there */
+        for (check = res; check->next != NULL; check = check->next) {
+            if (strcmp(curr->name, check->name) == 0) {
+                free(n);
+                n = NULL;
+            }
+        }
+        if (n) {
+            if (!res)
+                res = curr = n;
+            else {
+                curr->next = n;
+                curr = curr->next;
+            }
+        }
+    }
+
+    if (pclose(pipe) == -1)
+        return NULL;
+    fmt_system("git reset --hard");
+    fmt_system("git checkout master");
+
+    return res;
+}
+
+void free_namelist(namelist *l)
+{
+    namelist *curr, *next;
+    curr = l;
+    next = l->next;
+    free(curr);
+    while (next != NULL) {
+        curr = next;
+        next = curr->next;
+        free(curr);
+    }
+}
+
+void target(char target[FILENAME_MAX], const char *repodir,
+        const char *path, const char *branch)
+{
+    int res;
+    chdir(repodir);
+    fmt_system("git checkout %s", branch);
+    res = readlink(path, target, FILENAME_MAX - 1);
+    target[res] = '\0';
+    fmt_system("git checkout master");
 }
