@@ -58,7 +58,7 @@ int git_annex_get(const char *repodir, const char *path,
     res = fmt_system("git annex get -- \"%s\"",
             path + strlen(repodir) + 1);
     if (branch)
-        fmt_system("git checkout master");
+        fmt_system("git checkout git-annex");
     return res;
 }
 
@@ -154,7 +154,7 @@ namelist* git_branches(const char *repodir)
     while (fgets(buf, sizeof buf, pipe) != NULL || !feof(pipe)) {
         if ((p = strchr(buf, '\n')))
             *p = '\0';
-        if (strcmp(buf, "master") != 0) {
+        if (strcmp(buf + 2, "git-annex") != 0) {
             namelist *b = malloc(sizeof(namelist));
             strcpy(b->name, buf + 2);
             b->next = NULL;
@@ -179,9 +179,12 @@ namelist* conflicting_files(const char *repodir, const char *path,
     char buf[BUFSIZ], *p, *s;
     namelist *res, *curr, *check, *n;
 
+    if (strncmp(branch, "git-annex", strlen("git-annex") == 0))
+        return NULL;
+
     chdir(repodir);
     fmt_system("git checkout %s", branch);
-    fmt_system("git merge master");
+    fmt_system("git merge git-annex");
 
     if ((pipe = popen("git ls-files -u", "r")) == NULL)
         return NULL;
@@ -219,7 +222,7 @@ namelist* conflicting_files(const char *repodir, const char *path,
     if (pclose(pipe) == -1)
         return NULL;
     fmt_system("git reset --hard");
-    fmt_system("git checkout master");
+    fmt_system("git checkout git-annex");
 
     return res;
 }
@@ -227,13 +230,15 @@ namelist* conflicting_files(const char *repodir, const char *path,
 void free_namelist(namelist *l)
 {
     namelist *curr, *next;
-    curr = l;
-    next = l->next;
-    free(curr);
-    while (next != NULL) {
-        curr = next;
-        next = curr->next;
+    if (l != NULL) {
+        curr = l;
+        next = l->next;
         free(curr);
+        while (next != NULL) {
+            curr = next;
+            next = curr->next;
+            free(curr);
+        }
     }
 }
 
