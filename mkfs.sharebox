@@ -9,10 +9,10 @@ usage()
     exit 2
 }
 
-[[ -n $1 ]] || usage "Missing argument"
-[[ -z $2 ]] || usage "Too many arguments"
-[[ -d $1 ]] || usage "$1: Not a directory"
-[[ -z $(ls -A $1) ]] || usage "$1: Directory is not empty"
+[ -n $1 ] || usage "Missing argument"
+[ -z $2 ] || usage "Too many arguments"
+[ -d $1 ] || usage "$1: Not a directory"
+[ -z $(ls -A $1) ] || usage "$1: Directory is not empty"
 
 mkdir -- $1/files
 cd -- $1
