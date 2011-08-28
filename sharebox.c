@@ -45,6 +45,8 @@ static struct fuse_opt sharebox_opts[] = {
  * error.
  */
 
+struct sharebox sharebox;
+
 static int sharebox_getattr(const char *path, struct stat *stbuf)
 {
     dirlist *l;
@@ -301,6 +303,21 @@ static struct fuse_operations sharebox_oper = {
     .statfs     = sharebox_statfs,
 };
 
+static dirlist *init_dirlist()
+{
+    dirlist *l;
+    dir *slash;
+
+    l = malloc(sizeof (dirlist));
+    slash = malloc (sizeof (dir));
+    init_slash(slash);
+
+    l->dir = slash;
+    l->next = NULL;
+
+    return l;
+}
+
 static int
 sharebox_opt_proc
 (void *data, const char *arg, int key, struct fuse_args *outargs)
@@ -347,6 +364,8 @@ sharebox_opt_proc
                 }
                 return 0;
             }
+            if (!sharebox.dirs)
+                sharebox.dirs = init_dirlist();
             return 1;
     }
     return 1;
@@ -354,12 +373,6 @@ sharebox_opt_proc
 
 int main(int argc, char *argv[])
 {
-    dirlist l;
-    dir slash;
-    init_slash(&slash);
-    l.dir = &slash;
-    l.next = NULL;
-    sharebox.dirs = &l;
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     memset(&sharebox, 0, sizeof(sharebox));
     fuse_opt_parse(&args, &sharebox, sharebox_opts, sharebox_opt_proc);

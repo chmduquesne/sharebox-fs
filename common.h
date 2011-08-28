@@ -25,12 +25,6 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-#ifdef DEBUG
-#define debug(...) printf(__VA_ARGS__)
-#else
-#define debug(...)
-#endif
-
 typedef struct dir dir;
 struct dir
 {
@@ -54,6 +48,6 @@ struct sharebox
     dirlist *dirs;
 };
 
-static struct sharebox sharebox;
+extern struct sharebox sharebox;
 
 #endif /*__COMMON_H__ */

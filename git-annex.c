@@ -227,13 +227,15 @@ namelist* conflicting_files(const char *repodir, const char *path,
 void free_namelist(namelist *l)
 {
     namelist *curr, *next;
-    curr = l;
-    next = l->next;
-    free(curr);
-    while (next != NULL) {
-        curr = next;
-        next = curr->next;
+    if (l != NULL) {
+        curr = l;
+        next = l->next;
         free(curr);
+        while (next != NULL) {
+            curr = next;
+            next = curr->next;
+            free(curr);
+        }
     }
 }
 

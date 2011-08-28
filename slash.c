@@ -30,8 +30,6 @@ static int ondisk(const char *lnk)
 
 static int slash_getattr(const char *path, struct stat *stbuf)
 {
-    debug("slash_getattr(%s, stbuf)\n", path);
-
     int res;
     char fpath[FILENAME_MAX];
     fullpath(fpath, path);
@@ -55,8 +53,6 @@ static int slash_getattr(const char *path, struct stat *stbuf)
 
 static int slash_access(const char *path, int mask)
 {
-    debug("slash_access(%s, %d)\n", path, mask);
-
     int res;
 
     char fpath[FILENAME_MAX];
@@ -79,8 +75,6 @@ static int slash_access(const char *path, int mask)
 
 static int slash_readlink(const char *path, char *buf, size_t size)
 {
-    debug("slash_readlink(%s, buf, size)\n", path);
-
     int res;
 
     char fpath[FILENAME_MAX];
@@ -98,11 +92,8 @@ static int slash_readlink(const char *path, char *buf, size_t size)
 static int slash_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                off_t offset, struct fuse_file_info *fi)
 {
-    debug("slash_readdir(%s, buf, filler, offset, fi)\n", path);
-
     DIR *dp;
     struct dirent *de;
-    namelist *branch, *b;
     (void) offset;
     (void) fi;
 
@@ -120,6 +111,8 @@ static int slash_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     closedir(dp);
 
     /* We then list conflicting files */
+    /*
+    namelist *branch, *b;
     branch = git_branches(sharebox.reporoot);
     for (b = branch; b != NULL; b = b->next) {
         namelist *files, *f;
@@ -137,14 +130,13 @@ static int slash_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         free_namelist(files);
     }
     free_namelist(branch);
+    */
 
     return 0;
 }
 
 static int slash_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-    debug("slash_mknod(%s, mode, rdev)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -172,8 +164,6 @@ static int slash_mknod(const char *path, mode_t mode, dev_t rdev)
 
 static int slash_mkdir(const char *path, mode_t mode)
 {
-    debug("slash_mkdir(%s, mode)\n", path);
-
     int res;
 
     char fpath[FILENAME_MAX];
@@ -188,8 +178,6 @@ static int slash_mkdir(const char *path, mode_t mode)
 
 static int slash_unlink(const char *path)
 {
-    debug("slash_unlink(%s)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -214,8 +202,6 @@ static int slash_unlink(const char *path)
 
 static int slash_rmdir(const char *path)
 {
-    debug("slash_rmdir(%s)\n", path);
-
     int res;
 
     char fpath[FILENAME_MAX];
@@ -230,8 +216,6 @@ static int slash_rmdir(const char *path)
 
 static int slash_symlink(const char *target, const char *linkname)
 {
-    debug("slash_symlink(%s, %s)\n", target, linkname);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -256,8 +240,6 @@ static int slash_symlink(const char *target, const char *linkname)
 
 static int slash_rename(const char *from, const char *to)
 {
-    debug("slash_rename(%s, %s)\n", from, to);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -305,8 +287,6 @@ static int slash_rename(const char *from, const char *to)
 
 static int slash_chmod(const char *path, mode_t mode)
 {
-    debug("slash_chmod(%s, mode)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -331,8 +311,6 @@ static int slash_chmod(const char *path, mode_t mode)
 
 static int slash_chown(const char *path, uid_t uid, gid_t gid)
 {
-    debug("slash_chown(%s, uid, gid)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -357,8 +335,6 @@ static int slash_chown(const char *path, uid_t uid, gid_t gid)
 
 static int slash_truncate(const char *path, off_t size)
 {
-    debug("slash_truncate(%s, size)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -383,8 +359,6 @@ static int slash_truncate(const char *path, off_t size)
 
 static int slash_utimens(const char *path, const struct timespec ts[2])
 {
-    debug("slash_utimens(%s, ts)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int res;
@@ -415,8 +389,6 @@ static int slash_utimens(const char *path, const struct timespec ts[2])
 
 static int slash_open(const char *path, struct fuse_file_info *fi)
 {
-    debug("slash_open(%s, fi)\n", path);
-
     int res;
     int flags;
 
@@ -446,8 +418,6 @@ static int slash_open(const char *path, struct fuse_file_info *fi)
 static int slash_read(const char *path, char *buf, size_t size, off_t offset,
             struct fuse_file_info *fi)
 {
-    debug("slash_read(%s, buf, offset, fi)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int fd;
@@ -471,8 +441,6 @@ static int slash_read(const char *path, char *buf, size_t size, off_t offset,
 static int slash_write(const char *path, const char *buf, size_t size,
              off_t offset, struct fuse_file_info *fi)
 {
-    debug("slash_write(%s, buf, size, offset, fi)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     int fd;
@@ -498,8 +466,6 @@ static int slash_write(const char *path, const char *buf, size_t size,
 
 static int slash_release(const char *path, struct fuse_file_info *fi)
 {
-    debug("slash_release(%s, fi)\n", path);
-
     pthread_mutex_lock(&sharebox.rwlock);
 
     char fpath[FILENAME_MAX];
@@ -517,8 +483,6 @@ static int slash_release(const char *path, struct fuse_file_info *fi)
 
 static int slash_statfs(const char *path, struct statvfs *stbuf)
 {
-    debug("slash_statfs(%s, stbuf)\n", path);
-
     int res;
 
     char fpath[FILENAME_MAX];
