@@ -2,50 +2,8 @@
  * sharebox
  */
 
-#define SHAREBOX_VERSION "0.0.1"
-#define FUSE_USE_VERSION 26
-
-#ifdef linux
-/* For pread()/pwrite() */
-#define _XOPEN_SOURCE 500
-#endif
-
-#include <fuse.h>
-#include <fuse_opt.h>
-#include <stddef.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <strings.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <dirent.h>
-#include <errno.h>
-#include <sys/time.h>
-#include <pthread.h>
-#include "git-annex.h"
-
-#ifdef DEBUG
-#define debug(...) printf(__VA_ARGS__)
-#else
-#define debug(...)
-#endif
-// TODO: fix the errno (save them as soon as they happen)
-
-/*
- * FS attributes
- */
-
-struct sharebox
-{
-    pthread_mutex_t rwlock;
-    const char *reporoot;
-    bool deep_replicate;
-    const char *write_callback;
-};
-
-static struct sharebox sharebox;
+#include "common.h"
+#include "slash.h"
 
 /*
  * Options parsing
@@ -68,525 +26,259 @@ static struct fuse_opt sharebox_opts[] = {
     FUSE_OPT_END
 };
 
-
-static void fullpath(char fpath[FILENAME_MAX], const char *path)
-{
-    strcpy(fpath, sharebox.reporoot);
-    strncat(fpath, "/files", FILENAME_MAX);
-    strncat(fpath, path, FILENAME_MAX);
-}
-
-static int ondisk(const char *lnk)
-{
-    struct stat st;
-    return (stat(lnk, &st) != -1);
-}
-
 /*
  * FS operations
+ *
+ * sharebox-fs embeds more than one filesystem.
+ *
+ * "/.sharebox/remotes/" allows to manage the remotes
+ * "/.sharebox/revisions/" allows to browse the history
+ * "/.sharebox/unreferenced/" allows to see what files you can trash
+ * "/" contains the real versionning.
+ *
+ * To separate the logic, we match the path of the files we operate on and
+ * switch to the relevant operation. To do so, we go through the "dirlist"
+ * attribute of sharebox until we see a directory that match.
+ *
+ * A special case for "rename": We refuse moving files outside a
+ * filesystem. As a consequence, if the files do not both match, it is an
+ * error.
  */
+
+struct sharebox sharebox;
 
 static int sharebox_getattr(const char *path, struct stat *stbuf)
 {
-    debug("sharebox_getattr(%s, stbuf)\n", path);
-
-    int res;
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    res = lstat(fpath, stbuf);
-    if (git_annexed(sharebox.reporoot, fpath)) {
-        if (ondisk(fpath)) {
-            res = stat(fpath, stbuf);
-        } else {
-            stbuf->st_mode &= ~S_IFMT;
-            stbuf->st_mode |= S_IFREG; /* fake regular file */
-            stbuf->st_size = 0;        /* fake size = 0 */
-        }
-        stbuf->st_mode |= S_IWUSR;     /* fake writable */
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.getattr(path, stbuf);
     }
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    return -EACCES;
 }
 
 static int sharebox_access(const char *path, int mask)
 {
-    debug("sharebox_access(%s, %d)\n", path, mask);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    if (git_annexed(sharebox.reporoot, fpath)) {
-        if (ondisk(fpath))
-            res = access(fpath, mask & ~W_OK);
-        else
-            res = -EACCES;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.access(path, mask);
     }
-    else
-        res = access(fpath, mask);
-
-    if (res == -1)
-        res = -errno;
-
-    return res;
+    return -EACCES;
 }
 
 static int sharebox_readlink(const char *path, char *buf, size_t size)
 {
-    debug("sharebox_readlink(%s, buf, size)\n", path);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    res = readlink(fpath, buf, size - 1);
-    if (res == -1)
-        return -errno;
-
-    buf[res] = '\0';
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.readlink(path, buf, size);
+    }
+    return -EACCES;
 }
 
 
 static int sharebox_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                off_t offset, struct fuse_file_info *fi)
 {
-    debug("sharebox_readdir(%s, buf, filler, offset, fi)\n", path);
-
-    DIR *dp;
-    struct dirent *de;
-    namelist *branch, *b;
-    (void) offset;
-    (void) fi;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    dp = opendir(fpath);
-    if (dp == NULL)
-        return -errno;
-
-    while ((de = readdir(dp)) != NULL) {
-        if (filler(buf, de->d_name, NULL, 0))
-            break;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.readdir(path, buf, filler, offset, fi);
     }
-    closedir(dp);
-
-    /* We then list conflicting files */
-    branch = git_branches(sharebox.reporoot);
-    for (b = branch; b != NULL; b = b->next) {
-        namelist *files, *f;
-        files = conflicting_files(sharebox.reporoot, fpath, b->name);
-        for (f = files; f != NULL; f = f->next) {
-            char name[FILENAME_MAX];
-            strncpy(name, ".", FILENAME_MAX);
-            strncat(name, branch->name, FILENAME_MAX);
-            strncat(name, ".", FILENAME_MAX);
-            strncat(name, f->name, FILENAME_MAX);
-            strncat(name, ".conflict", FILENAME_MAX);
-            if (filler(buf, name, NULL, 0))
-                break;
-        }
-        free_namelist(files);
-    }
-    free_namelist(branch);
-
-    return 0;
+    return -EACCES;
 }
 
 static int sharebox_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-    debug("sharebox_mknod(%s, mode, rdev)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    /* On Linux this could just be 'mknod(path, mode, rdev)' but this
-       is more portable */
-    if (S_ISREG(mode)) {
-        res = open(fpath, O_CREAT | O_EXCL | O_WRONLY, mode);
-        if (res >= 0)
-            res = close(res);
-    } else if (S_ISFIFO(mode))
-        res = mkfifo(fpath, mode);
-    else
-        res = mknod(fpath, mode, rdev);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.mknod(path, mode, rdev);
+    }
+    return -EACCES;
 }
 
 static int sharebox_mkdir(const char *path, mode_t mode)
 {
-    debug("sharebox_mkdir(%s, mode)\n", path);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    res = mkdir(fpath, mode);
-
-    if (res == -1)
-        return -errno;
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.mkdir(path, mode);
+    }
+    return -EACCES;
 }
 
 static int sharebox_unlink(const char *path)
 {
-    debug("sharebox_unlink(%s)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    res = unlink(fpath);
-
-    if (!git_ignored(sharebox.reporoot, fpath)){
-        git_rm(sharebox.reporoot, fpath);
-        git_commit(sharebox.reporoot, "removed %s", path + 1);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.unlink(path);
     }
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    return -EACCES;
 }
 
 static int sharebox_rmdir(const char *path)
 {
-    debug("sharebox_rmdir(%s)\n", path);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    res = rmdir(fpath);
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.rmdir(path);
+    }
+    return -EACCES;
 }
 
 static int sharebox_symlink(const char *target, const char *linkname)
 {
-    debug("sharebox_symlink(%s, %s)\n", target, linkname);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-
-    char flinkname[FILENAME_MAX];
-    fullpath(flinkname, linkname);
-
-    res = symlink(target, flinkname);
-
-    if (!git_ignored(sharebox.reporoot, flinkname)){
-        git_add(sharebox.reporoot, flinkname);
-        git_commit(sharebox.reporoot, "created symlink %s->%s", linkname + 1, target);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(linkname, d->name, strlen(d->name)) == 0)
+            return d->operations.symlink(target, linkname);
     }
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    return -EACCES;
 }
 
 static int sharebox_rename(const char *from, const char *to)
 {
-    debug("sharebox_rename(%s, %s)\n", from, to);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-    bool from_ignored;
-    bool to_ignored;
-
-    char ffrom[FILENAME_MAX];
-    char fto[FILENAME_MAX];
-
-    fullpath(ffrom, from);
-    fullpath(fto, to);
-
-    /* proceed to rename */
-    from_ignored = git_ignored(sharebox.reporoot, ffrom);
-    res = rename(ffrom, fto);
-    to_ignored = git_ignored(sharebox.reporoot, fto);
-
-    if (res != -1) {
-        /* moved ignored to ignored (nothing) */
-
-        /* moved ignored to non ignored*/
-        if (from_ignored && !to_ignored){
-            git_annex_add(sharebox.reporoot, fto);
-            git_add(sharebox.reporoot, fto); /* this ensures links will be added too */
-        }
-        /* moved non ignored to ignored */
-        if (!from_ignored && to_ignored){
-            git_rm(sharebox.reporoot, ffrom);
-        }
-        /* moved non ignored to non ignored */
-        if (!from_ignored && !to_ignored){
-            git_mv(sharebox.reporoot, ffrom, fto);
-        }
-
-        git_commit(sharebox.reporoot, "moved %s to %s", from+1, to+1);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        /* /!\ we only accept renaming inside the same fs */
+        if ((strncmp(from, d->name, strlen(d->name)) == 0) &&
+            (strncmp(to, d->name, strlen(d->name) == 0)))
+            return d->operations.rename(from, to);
     }
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    return -EACCES;
 }
 
 static int sharebox_chmod(const char *path, mode_t mode)
 {
-    debug("sharebox_chmod(%s, mode)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    git_annex_unlock(sharebox.reporoot, fpath);
-
-    res = chmod(fpath, mode);
-
-    git_annex_add(sharebox.reporoot, fpath);
-    git_commit(sharebox.reporoot, "chmoded %s to %o", path+1, mode);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.chmod(path, mode);
+    }
+    return -EACCES;
 }
 
 static int sharebox_chown(const char *path, uid_t uid, gid_t gid)
 {
-    debug("sharebox_chown(%s, uid, gid)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    git_annex_unlock(sharebox.reporoot, fpath);
-
-    res = lchown(fpath, uid, gid);
-
-    git_annex_add(sharebox.reporoot, fpath);
-    git_commit(sharebox.reporoot, "chmown on %s", path+1);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.chown(path, uid, gid);
+    }
+    return -EACCES;
 }
 
 static int sharebox_truncate(const char *path, off_t size)
 {
-    debug("sharebox_truncate(%s, size)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    git_annex_unlock(sharebox.reporoot, fpath);
-
-    res = truncate(fpath, size);
-
-    git_annex_add(sharebox.reporoot, fpath);
-    git_commit(sharebox.reporoot, "truncated on %s", path+1);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.truncate(path, size);
+    }
+    return -EACCES;
 }
 
 static int sharebox_utimens(const char *path, const struct timespec ts[2])
 {
-    debug("sharebox_utimens(%s, ts)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int res;
-    struct timeval tv[2];
-    char fpath[FILENAME_MAX];
-
-    tv[0].tv_sec = ts[0].tv_sec;
-    tv[0].tv_usec = ts[0].tv_nsec / 1000;
-    tv[1].tv_sec = ts[1].tv_sec;
-    tv[1].tv_usec = ts[1].tv_nsec / 1000;
-
-    fullpath(fpath, path);
-
-    git_annex_unlock(sharebox.reporoot, fpath);
-
-    res = utimes(fpath, tv);
-
-    git_annex_add(sharebox.reporoot, fpath);
-    git_commit(sharebox.reporoot, "utimens on %s", path+1);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.utimens(path, ts);
+    }
+    return -EACCES;
 }
 
 static int sharebox_open(const char *path, struct fuse_file_info *fi)
 {
-    debug("sharebox_open(%s, fi)\n", path);
-
-    int res;
-    int flags;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    flags=fi->flags;
-
-    if (git_annexed(sharebox.reporoot, fpath))
-        /* Get the file on the fly, remove W_OK if it was requested */
-        if (!ondisk(fpath))
-            git_annex_get(sharebox.reporoot, fpath, NULL);
-        if (!ondisk(fpath))
-            return -EACCES;
-        flags &= ~W_OK;
-
-    res = open(fpath, flags);
-
-    if (res == 1)
-        return -errno;
-
-    close(res);
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.open(path, fi);
+    }
+    return -EACCES;
 }
 
 static int sharebox_read(const char *path, char *buf, size_t size, off_t offset,
             struct fuse_file_info *fi)
 {
-    debug("sharebox_read(%s, buf, offset, fi)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int fd;
-    int res;
-    (void) fi;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    if ((fd = open(fpath, O_RDONLY)) != -1)
-        if ((res = pread(fd, buf, size, offset)) != -1)
-            close(fd);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (fd == -1 || res == -1)
-        return -errno;
-    return res;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.read(path, buf, size, offset, fi);
+    }
+    return -EACCES;
 }
 
 static int sharebox_write(const char *path, const char *buf, size_t size,
              off_t offset, struct fuse_file_info *fi)
 {
-    debug("sharebox_write(%s, buf, size, offset, fi)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    int fd;
-    int res;
-    (void) fi;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    if (git_annexed(sharebox.reporoot, fpath))
-        git_annex_unlock(sharebox.reporoot, fpath);
-
-    if ((fd = open(fpath, O_WRONLY)) != -1)
-        if((res = pwrite(fd, buf, size, offset)) != -1)
-            close(fd);
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
-    if (fd == -1 || res == -1)
-        return -errno;
-    return res;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.write(path, buf, size, offset, fi);
+    }
+    return -EACCES;
 }
 
 static int sharebox_release(const char *path, struct fuse_file_info *fi)
 {
-    debug("sharebox_release(%s, fi)\n", path);
-
-    pthread_mutex_lock(&sharebox.rwlock);
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    if (!git_ignored(sharebox.reporoot, fpath)){
-        git_annex_add(sharebox.reporoot, fpath);
-        git_commit(sharebox.reporoot, "released %s", path+1);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.release(path, fi);
     }
-
-    pthread_mutex_unlock(&sharebox.rwlock);
-
     return 0;
 }
 
 static int sharebox_statfs(const char *path, struct statvfs *stbuf)
 {
-    debug("sharebox_statfs(%s, stbuf)\n", path);
-
-    int res;
-
-    char fpath[FILENAME_MAX];
-    fullpath(fpath, path);
-
-    res = statvfs(fpath, stbuf);
-    if (res == -1)
-        return -errno;
-
-    return 0;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.statfs(path, stbuf);
+    }
+    return -EACCES;
 }
 
 static struct fuse_operations sharebox_oper = {
@@ -610,6 +302,21 @@ static struct fuse_operations sharebox_oper = {
     .release    = sharebox_release,
     .statfs     = sharebox_statfs,
 };
+
+static dirlist *init_dirlist()
+{
+    dirlist *l;
+    dir *slash;
+
+    l = malloc(sizeof (dirlist));
+    slash = malloc (sizeof (dir));
+    init_slash(slash);
+
+    l->dir = slash;
+    l->next = NULL;
+
+    return l;
+}
 
 static int
 sharebox_opt_proc
@@ -657,6 +364,8 @@ sharebox_opt_proc
                 }
                 return 0;
             }
+            if (!sharebox.dirs)
+                sharebox.dirs = init_dirlist();
             return 1;
     }
     return 1;
