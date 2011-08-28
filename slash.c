@@ -531,26 +531,26 @@ static int slash_statfs(const char *path, struct statvfs *stbuf)
     return 0;
 }
 
-void init_slash(fs *fs)
+void init_slash(dir *d)
 {
-    strcpy(fs->dir, "/");
-    (fs->operations).getattr    = slash_getattr;
-    (fs->operations).access     = slash_access;
-    (fs->operations).readlink   = slash_readlink;
-    (fs->operations).readdir    = slash_readdir;
-    (fs->operations).mknod      = slash_mknod;
-    (fs->operations).mkdir      = slash_mkdir;
-    (fs->operations).symlink    = slash_symlink;
-    (fs->operations).unlink     = slash_unlink;
-    (fs->operations).rmdir      = slash_rmdir;
-    (fs->operations).rename     = slash_rename;
-    (fs->operations).chmod      = slash_chmod;
-    (fs->operations).chown      = slash_chown;
-    (fs->operations).truncate   = slash_truncate;
-    (fs->operations).utimens    = slash_utimens;
-    (fs->operations).open       = slash_open;
-    (fs->operations).read       = slash_read;
-    (fs->operations).write      = slash_write;
-    (fs->operations).release    = slash_release;
-    (fs->operations).statfs     = slash_statfs;
+    strcpy(d->name, "/");
+    (d->operations).getattr    = slash_getattr;
+    (d->operations).access     = slash_access;
+    (d->operations).readlink   = slash_readlink;
+    (d->operations).readdir    = slash_readdir;
+    (d->operations).mknod      = slash_mknod;
+    (d->operations).mkdir      = slash_mkdir;
+    (d->operations).symlink    = slash_symlink;
+    (d->operations).unlink     = slash_unlink;
+    (d->operations).rmdir      = slash_rmdir;
+    (d->operations).rename     = slash_rename;
+    (d->operations).chmod      = slash_chmod;
+    (d->operations).chown      = slash_chown;
+    (d->operations).truncate   = slash_truncate;
+    (d->operations).utimens    = slash_utimens;
+    (d->operations).open       = slash_open;
+    (d->operations).read       = slash_read;
+    (d->operations).write      = slash_write;
+    (d->operations).release    = slash_release;
+    (d->operations).statfs     = slash_statfs;
 }

@@ -26,7 +26,6 @@ static struct fuse_opt sharebox_opts[] = {
     FUSE_OPT_END
 };
 
-
 /*
  * FS operations
  *
@@ -38,7 +37,7 @@ static struct fuse_opt sharebox_opts[] = {
  * "/" contains the real versionning.
  *
  * To separate the logic, we match the path of the files we operate on and
- * switch to the relevant operation. To do so, we go through the "fslist"
+ * switch to the relevant operation. To do so, we go through the "dirlist"
  * attribute of sharebox until we see a directory that match.
  *
  * A special case for "rename": We refuse moving files outside a
@@ -48,36 +47,36 @@ static struct fuse_opt sharebox_opts[] = {
 
 static int sharebox_getattr(const char *path, struct stat *stbuf)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.getattr(path, stbuf);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.getattr(path, stbuf);
     }
     return -EACCES;
 }
 
 static int sharebox_access(const char *path, int mask)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.access(path, mask);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.access(path, mask);
     }
     return -EACCES;
 }
 
 static int sharebox_readlink(const char *path, char *buf, size_t size)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.readlink(path, buf, size);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.readlink(path, buf, size);
     }
     return -EACCES;
 }
@@ -86,146 +85,146 @@ static int sharebox_readlink(const char *path, char *buf, size_t size)
 static int sharebox_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                off_t offset, struct fuse_file_info *fi)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.readdir(path, buf, filler, offset, fi);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.readdir(path, buf, filler, offset, fi);
     }
     return -EACCES;
 }
 
 static int sharebox_mknod(const char *path, mode_t mode, dev_t rdev)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.mknod(path, mode, rdev);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.mknod(path, mode, rdev);
     }
     return -EACCES;
 }
 
 static int sharebox_mkdir(const char *path, mode_t mode)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.mkdir(path, mode);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.mkdir(path, mode);
     }
     return -EACCES;
 }
 
 static int sharebox_unlink(const char *path)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.unlink(path);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.unlink(path);
     }
     return -EACCES;
 }
 
 static int sharebox_rmdir(const char *path)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.rmdir(path);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.rmdir(path);
     }
     return -EACCES;
 }
 
 static int sharebox_symlink(const char *target, const char *linkname)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(linkname, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.symlink(target, linkname);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(linkname, d->name, strlen(d->name)) == 0)
+            return d->operations.symlink(target, linkname);
     }
     return -EACCES;
 }
 
 static int sharebox_rename(const char *from, const char *to)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
         /* /!\ we only accept renaming inside the same fs */
-        if ((strncmp(from, fs->dir, strlen(fs->dir)) == 0) &&
-            (strncmp(to, fs->dir, strlen(fs->dir) == 0)))
-            return fs->operations.rename(from, to);
+        if ((strncmp(from, d->name, strlen(d->name)) == 0) &&
+            (strncmp(to, d->name, strlen(d->name) == 0)))
+            return d->operations.rename(from, to);
     }
     return -EACCES;
 }
 
 static int sharebox_chmod(const char *path, mode_t mode)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.chmod(path, mode);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.chmod(path, mode);
     }
     return -EACCES;
 }
 
 static int sharebox_chown(const char *path, uid_t uid, gid_t gid)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.chown(path, uid, gid);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.chown(path, uid, gid);
     }
     return -EACCES;
 }
 
 static int sharebox_truncate(const char *path, off_t size)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.truncate(path, size);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.truncate(path, size);
     }
     return -EACCES;
 }
 
 static int sharebox_utimens(const char *path, const struct timespec ts[2])
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.utimens(path, ts);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.utimens(path, ts);
     }
     return -EACCES;
 }
 
 static int sharebox_open(const char *path, struct fuse_file_info *fi)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.open(path, fi);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.open(path, fi);
     }
     return -EACCES;
 }
@@ -233,12 +232,12 @@ static int sharebox_open(const char *path, struct fuse_file_info *fi)
 static int sharebox_read(const char *path, char *buf, size_t size, off_t offset,
             struct fuse_file_info *fi)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.read(path, buf, size, offset, fi);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.read(path, buf, size, offset, fi);
     }
     return -EACCES;
 }
@@ -246,36 +245,36 @@ static int sharebox_read(const char *path, char *buf, size_t size, off_t offset,
 static int sharebox_write(const char *path, const char *buf, size_t size,
              off_t offset, struct fuse_file_info *fi)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.write(path, buf, size, offset, fi);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.write(path, buf, size, offset, fi);
     }
     return -EACCES;
 }
 
 static int sharebox_release(const char *path, struct fuse_file_info *fi)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.release(path, fi);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.release(path, fi);
     }
     return 0;
 }
 
 static int sharebox_statfs(const char *path, struct statvfs *stbuf)
 {
-    fslist *fslist;
-    fs *fs;
-    for (fslist = sharebox.fslist; fslist != NULL; fslist = fslist->next) {
-        fs = fslist->fs;
-        if (strncmp(path, fs->dir, strlen(fs->dir)) == 0)
-            return fs->operations.statfs(path, stbuf);
+    dirlist *l;
+    dir *d;
+    for (l = sharebox.dirs; l != NULL; l = l->next) {
+        d = l->dir;
+        if (strncmp(path, d->name, strlen(d->name)) == 0)
+            return d->operations.statfs(path, stbuf);
     }
     return -EACCES;
 }
@@ -355,19 +354,12 @@ sharebox_opt_proc
 
 int main(int argc, char *argv[])
 {
-    fprintf(stderr, "1");
-    fslist fslist;
-    fprintf(stderr, "2");
-    fs slash;
-    fprintf(stderr, "3");
+    dirlist l;
+    dir slash;
     init_slash(&slash);
-    fprintf(stderr, "4");
-    fslist.fs = &slash;
-    fprintf(stderr, "5");
-    fslist.next = NULL;
-    fprintf(stderr, "6");
-    sharebox.fslist = &fslist;
-    fprintf(stderr, "7");
+    l.dir = &slash;
+    l.next = NULL;
+    sharebox.dirs = &l;
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     memset(&sharebox, 0, sizeof(sharebox));
     fuse_opt_parse(&args, &sharebox, sharebox_opts, sharebox_opt_proc);

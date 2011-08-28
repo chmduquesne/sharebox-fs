@@ -31,18 +31,18 @@
 #define debug(...)
 #endif
 
-typedef struct fs fs;
-struct fs
+typedef struct dir dir;
+struct dir
 {
-    char dir[FILENAME_MAX];
+    char name[FILENAME_MAX];
     struct fuse_operations operations;
 };
 
-typedef struct fslist fslist;
-struct fslist
+typedef struct dirlist dirlist;
+struct dirlist
 {
-    fs *fs;
-    fslist *next;
+    dir *dir;
+    dirlist *next;
 };
 
 struct sharebox
@@ -51,7 +51,7 @@ struct sharebox
     const char *reporoot;
     bool deep_replicate;
     const char *write_callback;
-    fslist *fslist;
+    dirlist *dirs;
 };
 
 static struct sharebox sharebox;
