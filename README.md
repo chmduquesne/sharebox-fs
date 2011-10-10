@@ -17,7 +17,8 @@ as possible a set of minimum features:
   conflict in favor of the local version. Moving this file as the new
   version should resolve the conflict in favor of the remote version.
   True merges should be avoided as they could be both confusing and
-  difficult to handle.
+  difficult to handle. Solved conflicts should propagate: if the conflict
+  between A and B is solved on A, B should follow the same choice.
 - *Versioning*: It should be able to automatically keep several versions
   of document.
 - *Efficient storage*: Versioning must not induce a forever growing size.
