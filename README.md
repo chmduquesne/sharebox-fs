@@ -6,6 +6,7 @@ The problem
 We want a filesystem that will synchronize arbitrary data between several
 machines. This filesystem has to be simple, and to provide as efficiently
 as possible a set of minimum features:
+
 - *Offline access*: it should be possible to modify data while not being
   connected to the internet, and get the data synchronized when the
   connection is restored.
