@@ -26,3 +26,28 @@ as possible a set of minimum features:
   updates every time a file is modified. Instead, it should let the user
   schedule the synchronizations. Still, callbacks have to be provided in
   for those who wish to have these instant updates.
+
+Planned interface
+=================
+
+Here is how the user should see the filesystem:
+
+    mnt/
+       |-regular files
+       |-.sharebox/
+                  |-history/
+                  |-peers/
+
+Internal storage
+================
+
+Storage should be done through git-annex. Default for each file should be
+to be versioned through git-annex. Transfers should happen only when files
+are actually opened (through the open() syscall). In order to allow the
+user to use git inside the filesystem, the .git directory of sharebox has
+to be removed from the tree. This is achieved easily by moving the files
+in a subtree:
+
+    fs/
+      |-.git/
+      |-files/-regular files (links handled through git-annex)
