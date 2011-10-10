@@ -12,7 +12,9 @@ as possible a set of minimum features:
   connection is restored.
 - *Conflict handling*: if the same document is modified in several places,
   the system should keep both versions and yet provide a simple way to
-  choose between the two versions.
+  choose between the two versions. Ideally the remote conflicting version
+  should be shown as a hidden file that you can 'rm' in order to choose
+  the version.
 - *Versioning*: It should be able to automatically keep several versions
   of document.
 - *Efficient storage*: Versioning must not induce a forever growing size.
@@ -37,6 +39,9 @@ Here is how the user should see the filesystem:
        |-.sharebox/
                   |-history/
                   |-peers/
+
+The test suite gives a sequence of use cases that may be interesting to
+browse if you want to understand how sharebox should be used in the end.
 
 Internal storage
 ================
