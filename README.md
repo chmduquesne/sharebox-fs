@@ -13,8 +13,10 @@ as possible a set of minimum features:
 - *Conflict handling*: if the same document is modified in several places,
   the system should keep both versions and yet provide a simple way to
   choose between the two versions. Ideally the remote conflicting version
-  should be shown as a hidden file that you can 'rm' in order to choose
-  the version.
+  should be shown as a hidden file. Removing this file should resolve the
+  conflict in favor of the local version. Moving this file as the new
+  version should resolve the conflict in favor of the remote version.
+  True merges should be avoided.
 - *Versioning*: It should be able to automatically keep several versions
   of document.
 - *Efficient storage*: Versioning must not induce a forever growing size.
