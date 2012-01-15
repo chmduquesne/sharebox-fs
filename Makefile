@@ -4,7 +4,7 @@ CFLAGS=`pkg-config fuse --cflags` -DDEBUG
 LDFLAGS=`pkg-config fuse --libs`
 
 sharebox: sharebox.o git-annex.o slash.o
-	gcc -g -Wall $(LDFLAGS) -o sharebox sharebox.o git-annex.o slash.o
+	gcc -g -Wall -o sharebox sharebox.o git-annex.o slash.o $(LDFLAGS)
 
 sharebox.o: sharebox.c
 	gcc -g -Wall $(CFLAGS) -c sharebox.c
