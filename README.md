@@ -1,3 +1,7 @@
+I am no longer developing this project. For a promissing alternative, see https://bazil.org/
+
+---
+
 Here is sharebox, a project of a distributed synchronizing filesystem.
 
 The problem
