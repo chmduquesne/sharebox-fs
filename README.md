@@ -1,4 +1,4 @@
-I am no longer developing this project. For a promissing alternative, see https://bazil.org/
+I am no longer developing this project. For a promising alternative, see https://bazil.org/
 
 ---
 
